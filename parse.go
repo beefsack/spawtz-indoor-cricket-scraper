@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/moovweb/gokogiri"
 	"github.com/moovweb/gokogiri/xml"
+	"strings"
 )
 
 func Parse(input []byte) (m Match, err error) {
@@ -39,14 +40,78 @@ func Parse(input []byte) (m Match, err error) {
 }
 
 func ParseInnings(oversTable xml.Node) (i Innings, err error) {
-	teamHeaders, err := oversTable.Search("//td[@class='TeamHeader']")
+	var (
+		skin             Skin
+		skinBatsmanIndex int
+	)
+	rows, err := oversTable.Search(".//tr")
 	if err != nil {
 		return
 	}
-	if len(teamHeaders) == 0 {
-		err = errors.New("Couldn't parse team name")
-		return
+	for _, row := range rows {
+		// Figure out type of row and handle
+		cells, err := row.Search(".//td")
+		if err != nil {
+			return i, err
+		}
+		if len(cells) == 0 {
+			continue
+		}
+		if len(cells) > 1 && cells[0].Attr("class") == "TeamHeader" {
+			i.Team = strings.TrimSpace(cells[1].Content())
+		} else if len(cells) > 2 &&
+			cells[2].Attr("class") == "Bwl" {
+			skin = Skin{}
+			skinBatsmanIndex = 0
+			for _, cell := range cells {
+				if cell.Attr("class") == "Bwl" {
+					skin.Overs = append(skin.Overs, Over{
+						Bowler: strings.TrimSpace(cell.Content()),
+					})
+				}
+			}
+		} else if skinBatsmanIndex <= 1 && len(skin.Overs) > 0 &&
+			cells[0].Attr("class") == "BatsmanCell" {
+			skin.Batsmen[skinBatsmanIndex] = strings.TrimSpace(
+				cells[0].Content())
+			overIndex := 0
+			ballIndex := 0
+			for _, cell := range cells {
+				if (cell.Attr("class") == "BallCell" ||
+					cell.Attr("class") == "extraBall") &&
+					overIndex < len(skin.Overs) {
+					var ball *Ball
+					ballRaw := strings.ToLower(strings.TrimSpace(
+						cell.Content()))
+					fmt.Printf("%#v\n", ballRaw)
+					if skinBatsmanIndex == 0 {
+						ball = &Ball{}
+						skin.Overs[overIndex].Balls = append(
+							skin.Overs[overIndex].Balls, *ball)
+					} else {
+						ball = &skin.Overs[overIndex].Balls[ballIndex]
+					}
+					ball.Bowler = skin.Overs[overIndex].Bowler
+					if ballRaw != "" {
+						ball.Batsman = skin.Batsmen[skinBatsmanIndex]
+						ball.Kind = ballRaw
+					}
+					// skin.Overs[overIndex].Balls = append(
+					// 	skin.Overs[overIndex].Balls, Ball{
+					// 		Bowler:  skin.Overs[overIndex],
+					// 		Batsman: skin.Batsmen[skinBatsmanIndex],
+					// 	})
+				} else if cell.Attr("class") == "OverTotalCell rightAligned" {
+					overIndex++
+					ballIndex = 0
+				}
+			}
+			if skinBatsmanIndex == 1 {
+				i.Skins = append(i.Skins, skin)
+			}
+			skinBatsmanIndex++
+		}
 	}
-	i.Team = teamHeaders[len(teamHeaders)-1].Content()
+	fmt.Printf("%#v\n", i)
 	return
 }

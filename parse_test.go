@@ -28,4 +28,8 @@ func TestParse(t *testing.T) {
 		t.Fatalf("Team name was not '%s', got '%s' instead", expectedTeam2,
 			match.Teams[1].Name)
 	}
+	if len(match.Innings[0].Skins) != 4 {
+		t.Fatalf("Expected there to be 4 innings for team 1, got %d",
+			len(match.Innings[0].Skins))
+	}
 }
